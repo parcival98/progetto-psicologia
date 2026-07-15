@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Area Paziente - Prenotazione</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f0f8ff; padding: 40px; }
+        .card { max-width: 600px; margin: auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        input, select { width: 100%; padding: 10px; margin: 10px 0; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box; }
+        
+        /* Griglia degli orari */
+        .orari-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 15px; margin-bottom: 20px; }
+        
+        .slot { padding: 10px; border-radius: 5px; border: 1px solid #3498db; background: white; color: #3498db; cursor: pointer; text-align: center; transition: 0.3s; }
+        .slot:hover { background-color: #eaf2f8; }
+        
+        .slot.selezionato { background-color: #3498db; color: white; font-weight: bold; }
+        
+        .slot.occupato { background-color: #ecf0f1; border-color: #bdc3c7; color: #95a5a6; cursor: not-allowed; text-decoration: line-through; }
+
+        .btn-invia { width: 100%; padding: 12px; background-color: #2ecc71; color: white; border: none; cursor: pointer; font-size: 16px; border-radius: 5px; font-weight: bold;}
+        .btn-invia:disabled { background-color: #95a5a6; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>Prenota una Seduta (60 min)</h2>
+        <p>Scegli un giorno e seleziona un orario disponibile.</p>
+                
+        <input type="date" id="dataScelta" onchange="generaOrari()">
+        
+        <div id="orariGrid" class="orari-grid"></div>
+        
+        <textarea id="motivoRichiesta" placeholder="Scrivi brevemente il motivo della richiesta..." rows="3" style="width: 100%; padding: 10px; margin: 15px 0; border-radius: 5px; border: 1px solid #ccc; font-family: inherit; resize: vertical;"></textarea>
+        
+        <button id="btnInvia" class="btn-invia" onclick="richiediAppuntamento()" disabled>Invia Richiesta</button>
+        <p id="messaggio" style="text-align: center; font-weight: bold; margin-top: 15px;"></p>
+    </div>
+
+    <script>
+        const GATEWAY = "http://localhost:8080";
+        let appuntamentiEsistenti = [];
+        let orarioSelezionato = null;
+
+        // 1. Controllo Accesso dal LocalStorage
+        const idUtenteLoggato = localStorage.getItem('pazienteId');
+        const nomeUtenteLoggato = localStorage.getItem('pazienteNome');
+
+        if(!idUtenteLoggato) {
+            alert("Devi effettuare l'accesso!");
+            window.location.href = 'index.html'; // Lo caccia via se non è loggato
+        } else {
+            // Aggiungiamo un benvenuto personalizzato in cima alla pagina
+            document.querySelector('h2').innerText = `Benvenuto, ${nomeUtenteLoggato}! Prenota la tua seduta`;
+        }
+
+        // 2. Scarichiamo gli appuntamenti (ci serviranno per bloccare gli orari)
+        async function caricaAppuntamenti() {
+            const res = await fetch(`${GATEWAY}/api/appointments`);
+            appuntamentiEsistenti = await res.json();
+            
+            // Impostiamo la data minima del calendario a oggi
+            const oggi = new Date().toISOString().split('T')[0];
+            document.getElementById('dataScelta').min = oggi;
+        }
+
+        // 3. Generazione della griglia orari
+        function generaOrari() {
+            const dataScelta = document.getElementById('dataScelta').value;
+            const griglia = document.getElementById('orariGrid');
+            griglia.innerHTML = ''; // Svuota orari precedenti
+            orarioSelezionato = null;
+            document.getElementById('btnInvia').disabled = true;
+
+            if (!dataScelta) return;
+
+            const orariLavorativi = [
+                '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', 
+                '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'
+            ];
+
+            orariLavorativi.forEach(ora => {
+                const dataOraSlot = `${dataScelta}T${ora}:00`;
+
+                // Controlliamo se qualcuno ha già prenotato questo orario!
+                const isOccupato = appuntamentiEsistenti.some(app => app.dataOraInizio === dataOraSlot);
+
+                const btn = document.createElement('div');
+                btn.className = 'slot';
+                btn.innerText = ora;
+
+                if (isOccupato) {
+                    btn.classList.add('occupato'); // Lo rendiamo grigio e non cliccabile
+                    btn.title = "Non disponibile";
+                } else {
+                    btn.onclick = () => selezionaSlot(btn, dataOraSlot);
+                }
+
+                griglia.appendChild(btn);
+            });
+        }
+
+        // 4. Selezione dello slot libero
+        function selezionaSlot(bottoneCliccato, dataOra) {
+            document.querySelectorAll('.slot').forEach(b => b.classList.remove('selezionato'));
+            bottoneCliccato.classList.add('selezionato');
+            orarioSelezionato = dataOra;
+            document.getElementById('btnInvia').disabled = false;
+        }
+
+        // 5. L'UNICA funzione richiediAppuntamento corretta!
+        async function richiediAppuntamento() {
+            const motivo = document.getElementById('motivoRichiesta').value;
+
+            if(!orarioSelezionato) {
+                alert("Seleziona un orario!");
+                return;
+            }
+
+            if(!motivo.trim()) { // <-- Controllo per renderlo obbligatorio
+                alert("Per favore, inserisci un motivo per la richiesta.");
+                return;
+            }
+
+            const appuntamento = {
+                pazienteId: parseInt(idUtenteLoggato), // Prende l'ID direttamente dalla "memoria" del browser
+                dataOraInizio: orarioSelezionato,
+                motivo: motivo
+            };
+
+            try {
+                const response = await fetch(`${GATEWAY}/api/appointments`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(appuntamento)
+                });
+
+                const msg = document.getElementById('messaggio');
+                if(response.ok) {
+                msg.style.color = "green";
+                msg.innerText = "Prenotazione inviata! Controlla la tua casella email.";
+                document.getElementById('btnInvia').disabled = true;
+
+                // --- NUOVO: CHIAMATA ALL'EMAIL SERVICE ---
+                // Nota: In un'app reale prenderemmo l'email dal DB, qui per l'esame
+                // usiamo un'email fissa di test o la recuperiamo dal localStorage se l'hai salvata
+                const emailPaziente = "la_tua_email_personale@gmail.com"; // <-- Metti la tua mail per vedere se arriva!
+                const nomePaz = localStorage.getItem('pazienteNome') || "Paziente";
+
+                try {
+                    await fetch(`${GATEWAY}/api/emails/send`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            to: emailPaziente,
+                            subject: "Richiesta Ricevuta - Studio Psicologico",
+                            body: `Gentile ${nomePaz},\n\nAbbiamo ricevuto la tua richiesta di prenotazione.\n\nLa Dr.ssa ti contatterà a breve per un colloquio telefonico conoscitivo di circa 10 minuti.\nSe hai preferenze di orario per la chiamata, puoi rispondere a questa email.\n\nA presto,\nSegreteria Studio Psicologico`
+                        })
+                    });
+                } catch(e) {
+                    console.log("Errore invio mail ricezione:", e);
+                }
+                // -----------------------------------------
+
+                await caricaAppuntamenti();
+                generaOrari(); 
+            } else {
+                msg.style.color = "red";
+                msg.innerText = "Errore durante la prenotazione.";
+            }
+            } catch (error) {
+                console.error("Errore di rete: ", error);
+            }
+        }
+
+        // Avvia il caricamento dei dati all'apertura
+        caricaAppuntamenti();
+
+    </script>
+</body>
+</html>

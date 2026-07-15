@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Studio Psicologico - Accesso</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box;}
+        .card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+        
+        /* Modifica per allargare leggermente la card di registrazione per far leggere bene il GDPR */
+        #registerBox { max-width: 500px; } 
+
+        input, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box; }
+        button { background-color: #3498db; color: white; border: none; cursor: pointer; font-weight: bold; }
+        .toggle-link { color: #3498db; text-align: center; display: block; margin-top: 10px; cursor: pointer; text-decoration: underline; }
+        
+        /* Stile per il box della privacy */
+        .gdpr-box { background: #f8f9fa; border: 1px solid #e2e8f0; padding: 12px; margin: 10px 0; border-radius: 5px; font-size: 11px; color: #4a5568; text-align: justify; max-height: 100px; overflow-y: auto; }
+        .checkbox-label { font-size: 13px; display: flex; align-items: flex-start; gap: 8px; margin-bottom: 15px; cursor: pointer; }
+        .checkbox-label input { width: auto; margin: 3px 0 0 0; }
+    </style>
+</head>
+<body>
+    <div class="card" id="loginBox">
+        <h2 style="text-align: center;">Accesso Pazienti</h2>
+        <input type="email" id="loginEmail" placeholder="Email">
+        <input type="password" id="loginPassword" placeholder="Password">
+        <button onclick="effettuaLogin()">Accedi</button>
+        <span class="toggle-link" onclick="toggleView()">Non hai un account? Registrati</span>
+        <p id="loginMsg" style="color: red; text-align: center; font-weight: bold;"></p>
+    </div>
+
+    <div class="card" id="registerBox" style="display: none;">
+        <h2 style="text-align: center;">Registrazione Paziente</h2>
+        
+        <input type="text" id="regNome" placeholder="Nome *">
+        <input type="text" id="regCognome" placeholder="Cognome *">
+        
+        <small style="color: #666; margin-left: 5px;">Data di nascita *</small>
+        <input type="date" id="regDataNascita" style="margin-top: 2px;">
+        
+        <input type="text" id="regCodiceFiscale" placeholder="Codice Fiscale *" style="text-transform: uppercase;" maxlength="16">
+        <input type="tel" id="regCellulare" placeholder="Numero di Cellulare *">
+        <input type="email" id="regEmail" placeholder="Email *">
+        <input type="password" id="regPassword" placeholder="Password *">
+        
+        <div class="gdpr-box">
+            Le informazioni raccolte durante il colloquio saranno trattate con la massima riservatezza,
+            nel pieno rispetto delle normative vigenti in materia di protezione dei dati
+            personali e dei principi deontologici della professione. (Informativa
+            sul trattamento dei dati personali ai sensi dell’Articolo 13 D.lgs 196/03
+            (Codice Privacy) e dell’articolo 13 del Regolamento UE 2016/679 - GDPR)
+        </div>
+        
+        <label class="checkbox-label">
+            <input type="checkbox" id="regPrivacy">
+            <span>Accetto il trattamento dei dati personali ai fini della prenotazione e dichiaro di aver letto l'informativa. *</span>
+        </label>
+
+        <button onclick="effettuaRegistrazione()" style="background-color: #2ecc71;">Completa Registrazione</button>
+        <span class="toggle-link" onclick="toggleView()">Hai già un account? Accedi</span>
+        <p id="regMsg" style="color: red; text-align: center; font-weight: bold; font-size: 14px;"></p>
+    </div>
+
+    <script>
+        const GATEWAY = "http://localhost:8080";
+
+        // Cambia vista tra Login e Registrazione
+        function toggleView() {
+            const loginBox = document.getElementById('loginBox');
+            const regBox = document.getElementById('registerBox');
+            const regMsg = document.getElementById('regMsg');
+            
+            if(loginBox.style.display === 'none') {
+                loginBox.style.display = 'block';
+                regBox.style.display = 'none';
+            } else {
+                loginBox.style.display = 'none';
+                regBox.style.display = 'block';
+            }
+            regMsg.innerText = ""; // Pulisce gli errori quando si cambia schermata
+        }
+
+        // Funzione per il Login
+        async function effettuaLogin() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            try {
+                const res = await fetch(`${GATEWAY}/api/patients/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                if(res.ok) {
+                    const paziente = await res.json();
+                    localStorage.setItem('pazienteId', paziente.id);
+                    localStorage.setItem('pazienteNome', paziente.nome);
+                    window.location.href = 'paziente.html'; 
+                } else {
+                    document.getElementById('loginMsg').innerText = "Email o password errati.";
+                }
+            } catch (err) {
+                document.getElementById('loginMsg').innerText = "Errore di connessione al server.";
+            }
+        }
+
+        // Funzione per la Registrazione con validazione
+        async function effettuaRegistrazione() {
+            const nome = document.getElementById('regNome').value;
+            const cognome = document.getElementById('regCognome').value;
+            const dataNascita = document.getElementById('regDataNascita').value;
+            const codiceFiscale = document.getElementById('regCodiceFiscale').value;
+            const cellulare = document.getElementById('regCellulare').value;
+            const email = document.getElementById('regEmail').value;
+            const password = document.getElementById('regPassword').value;
+            const privacyChecked = document.getElementById('regPrivacy').checked;
+            
+            const msg = document.getElementById('regMsg');
+            msg.style.color = "red"; // Reset del colore
+
+            // 1. Controllo dei campi vuoti
+            if(!nome || !cognome || !dataNascita || !codiceFiscale || !cellulare || !email || !password) {
+                msg.innerText = "Attenzione: tutti i campi contrassegnati con * sono obbligatori!";
+                return;
+            }
+
+            // 2. Controllo della spunta Privacy
+            if(!privacyChecked) {
+                msg.innerText = "Devi accettare l'informativa sulla privacy per poterti registrare.";
+                return;
+            }
+
+            // 3. Creazione dell'oggetto da inviare al Backend
+            const paziente = {
+                nome, 
+                cognome, 
+                dataNascita, 
+                codiceFiscale: codiceFiscale.toUpperCase(), 
+                cellulare, 
+                email, 
+                password,
+                accettazionePrivacy: privacyChecked
+            };
+
+            try {
+                const res = await fetch(`${GATEWAY}/api/patients`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(paziente)
+                });
+
+                if(res.ok) {
+                    alert("Registrazione completata con successo! Ora puoi effettuare l'accesso.");
+                    // Pulisce i campi dopo la registrazione
+                    document.getElementById('regNome').value = '';
+                    document.getElementById('regCognome').value = '';
+                    document.getElementById('regDataNascita').value = '';
+                    document.getElementById('regCodiceFiscale').value = '';
+                    document.getElementById('regCellulare').value = '';
+                    document.getElementById('regEmail').value = '';
+                    document.getElementById('regPassword').value = '';
+                    document.getElementById('regPrivacy').checked = false;
+                    
+                    toggleView(); // Riporta automaticamente al Login
+                } else {
+                    msg.innerText = "Errore durante la registrazione. Riprova.";
+                }
+            } catch (err) {
+                msg.innerText = "Impossibile connettersi al server. Verifica che il Gateway e il Patient Service siano accesi.";
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  patient-db:
+    image: postgres:15-alpine
+    container_name: patient_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: patient_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - patient_pgdata:/var/lib/postgresql/data
+
+  booking-db:
+    image: postgres:15-alpine
+    container_name: booking_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: booking_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - booking_pgdata:/var/lib/postgresql/data
+
+volumes:
+  patient_pgdata:
+  booking_pgdata:
